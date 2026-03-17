@@ -1,0 +1,2 @@
+# AI-bookkeeping
+geminiを利用したレシートからTKCに取り込める仕訳を作成するシステムを開発する
