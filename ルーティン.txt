@@ -1,0 +1,8 @@
+git pull origin main
+
+#ライブラリを追加した場合
+pip freeze > requirements.txt
+
+pip install -r requirements.txt
+
+毎回変更は保存すること！
