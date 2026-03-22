@@ -19,7 +19,7 @@ class MyHandler(PatternMatchingEventHandler):
 
         time.sleep(2)  # ファイルが完全に保存されるのを待つ
 
-        try: #ここに処理の関数を入れる
+        #try: #ここに処理の関数を入れる
             
-        except Exception as e:
-            print(f"エラーが発生しました: {e}") 
+        ##except Exception as e:
+        #    print(f"エラーが発生しました: {e}") 
