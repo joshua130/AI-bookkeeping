@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>OCR専用・超高精細カメラ</title>
+    <style>
+        /* レイアウトを完全に固定 */
+        html, body { 
+            position: fixed; width: 100%; height: 100%; 
+            margin: 0; padding: 0; background: #000; overflow: hidden;
+        }
+        body { 
+            display: flex; flex-direction: column; 
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+        
+        /* プレビュー画面 */
+        #video-container {
+            flex: 1; min-height: 0; position: relative;
+            display: flex; align-items: center; justify-content: center;
+        }
+        video { width: 100%; height: 100%; object-fit: contain; }
+
+        /* --- 🎨 撮影ガイド（オーバーレイ）の追加 --- */
+        #video-container::after {
+            content: "ここにレシートを合わせて\n画面をタップしてピントを合わせてください";
+            position: absolute;
+            top: 5%; left: 10%; right: 10%; bottom: 5%;
+            border: 3px dashed rgba(255, 255, 255, 0.7);
+            border-radius: 10px;
+            pointer-events: none;
+            display: flex;
+            align-items: center; justify-content: center;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 16px;
+            white-space: pre-wrap;
+            background-color: rgba(0, 0, 0, 0.3);
+            z-index: 5;
+        }
+        
+        /* 操作エリア：画面下部に必ず配置 */
+        .ui { 
+            height: 120px; width: 100%;
+            display: flex; flex-direction: row; /* 横並び */
+            justify-content: space-around; align-items: center; /* 均等に配置 */
+            background: rgba(20, 20, 20, 0.95);
+            z-index: 10;
+        }
+        
+        /* ボタンのデザイン */
+        .btn { border: none; outline: none; cursor: pointer; }
+
+        /* --- 🎨 シャッターボタン（UI改善） --- */
+        .shutter { 
+            width: 70px; height: 70px; background: #fff; border-radius: 50%; 
+            border: 5px solid #aaa;
+            box-shadow: 0 0 10px rgba(0,0,0,0.7);
+        }
+        .shutter:active { background: #ccc; transform: scale(0.9); }
+
+        /* --- 🎨 ライトボタンの追加 --- */
+        .torch {
+            width: 50px; height: 50px; background: #333; border-radius: 50%;
+            color: #fff; font-size: 20px; display: flex; align-items: center; justify-content: center;
+        }
+        .torch.on { background: #ff0; color: #000; }
+        
+        #status { color: #0f0; font-size: 11px; margin-bottom: 5px; position: absolute; bottom: 10px; left: 10px; z-index: 15; background: rgba(0,0,0,0.5); padding: 2px 5px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <div id="video-container">
+        <video id="video" autoplay playsinline></video>
+        <div id="status">Initializing...</div>
+    </div>
+    <div class="ui">
+        <button class="btn torch" id="torch-btn" onclick="toggleTorch()">💡</button>
+        <button class="btn shutter" onclick="takePhoto()"></button>
+        <div style="width: 50px;"></div>
+    </div>
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const status = document.getElementById('status');
+        const torchBtn = document.getElementById('torch-btn');
+        let videoTrack;
+
+        async function startCamera() {
+            // --- 📸 カメラ設定（OCR特化） ---
+            const constraints = {
+                video: {
+                    facingMode: { ideal: "environment" }, // 背面カメラ
+                    // 縦長で高解像度を要求
+                    height: { ideal: 3840 },
+                    width: { ideal: 2160 },
+                    // フォーカスのヒント
+                    advanced: [
+                        { focusMode: "continuous" },
+                        { zoom: 1.0 } // 意図しないデジタルズームを防止
+                    ]
+                },
+                audio: false
+            };
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = stream;
+                videoTrack = stream.getVideoTracks()[0];
+                
+                // 割り当てられた解像度を表示
+                const settings = videoTrack.getSettings();
+                status.innerText = `OK: ${settings.width}x${settings.height} (OCR Mode)`;
+
+                // ライト機能がサポートされているかチェック
+                const capabilities = videoTrack.getCapabilities();
+                if (!capabilities.torch) {
+                    torchBtn.style.display = 'none'; // ライトがなければボタンを隠す
+                }
+            } catch (err) {
+                status.innerText = "Error: " + err.name;
+                console.error(err);
+            }
+        }
+
+        // --- 💡 ライトの点灯/消灯機能 ---
+        async function toggleTorch() {
+            if (!videoTrack) return;
+            const currentSettings = videoTrack.getSettings();
+            const torchStatus = !currentSettings.torch; // 現在の状態を反転
+            
+            try {
+                await videoTrack.applyConstraints({
+                    advanced: [{ torch: torchStatus }]
+                });
+                // ボタンの見た目を変える
+                torchBtn.classList.toggle('on', torchStatus);
+                status.innerText = `Torch: ${torchStatus ? 'ON' : 'OFF'}`;
+            } catch (err) {
+                console.error("Torch error:", err);
+                status.innerText = "Torch not supported on this lens";
+            }
+        }
+
+        function takePhoto() {
+            const context = canvas.getContext('2d');
+            
+            // ビデオの実解像度を取得
+            const videoWidth = video.videoWidth;
+            const videoHeight = video.videoHeight;
+            
+            if (videoWidth === 0 || videoHeight === 0) {
+                status.innerText = "Wait for camera...";
+                return;
+            }
+
+            canvas.width = videoWidth;
+            canvas.height = videoHeight;
+            context.drawImage(video, 0, 0, videoWidth, videoHeight);
+
+            // --- 📸 画像形式をPNG（無圧縮）に変更 ---
+            canvas.toBlob(blob => {
+                if (!blob) return;
+                const formData = new FormData();
+                // ファイル名も.pngに変更
+                formData.append('photo', blob, 'ocr_receipt.png');
+
+                status.innerText = "Processing High-Res PNG...";
+                
+                fetch('/upload', { method: 'POST', body: formData })
+                .then(response => response.text())
+                .then(data => { 
+                    status.innerText = `Saved PNG: ${videoWidth}x${videoHeight}`;
+                    console.log(data);
+                })
+                .catch(err => {
+                    status.innerText = "Upload Error";
+                    console.error(err);
+                });
+            }, 'image/png'); // ロスレスPNG形式
+        }
+
+        startCamera();
+    </script>
+</body>
+</html>
