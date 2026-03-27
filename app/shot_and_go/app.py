@@ -1,5 +1,5 @@
 import os
-import json
+import sqlite3
 import dotenv
 from flask import Flask, request, jsonify
 from datetime import datetime
@@ -12,20 +12,37 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # 簡易的なAPIアクセスキー (セキュリティのため)
 API_KEY = 'YOUR_SECRET_API_KEY' # アプリ側にも同じ値を設定します
+DB_FILE = "main.db"  # SQLiteデータベースファイル
 
-COMPANY_FILE = "companies.json"  # 企業情報のJSONファイル
 
-if not os.path.exists(COMPANY_FILE):
-    with open(COMPANY_FILE, 'w', encoding='utf-8') as f:
-        json.dump([], f, ensure_ascii=False, indent=4)
+#データベースの初期化
+def init_db():
+    with sqlite3.connect(DB_FILE) as conn:
+        c = conn.cursor()
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS companies (
+                code TEXT PRIMARY KEY,
+                name TEXT UNIQUE NOT NULL
+            )
+        ''')
+        conn.commit()
 
+init_db()
+
+#顧問先リスト取得（select）
+#APIキーが正しい場合のみ、データベースから顧問先の名前を取得して返す
+#APIキーが間違っている場合は、401 Unauthorizedを返す
+
+# --- 2. 顧問先リストを取得する窓口 ---
 @app.route('/companies', methods=['GET'])
 def get_companies():
     key = request.headers.get('x-api-key')
     if key != API_KEY:
         return "Unauthorized", 401
-    with open(COMPANY_FILE, 'r', encoding='utf-8') as f:
-        companies = json.load(f)
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT code, name FROM companies ORDER BY code ASC")
+        companies = [{"code": row[0], "name": row[1]} for row in cursor.fetchall()]
     return jsonify(companies)
 
 # スマホからのPOSTリクエストのみを受け付ける窓口
@@ -62,25 +79,19 @@ def add_company():
     
     # スマホから送られてくるJSONデータを取得
     data = request.get_json()
-    new_name = data.get('name')
+    new_name = data.get('name', '').strip()
     
     if not new_name:
         return "Name is required", 400
 
-    # 現在のリストを読み込む
-    with open(COMPANY_FILE, 'r', encoding='utf-8') as f:
-        companies = json.load(f)
-    
-    # 重複チェック（既にある名前なら追加しない）
-    if new_name not in companies:
-        companies.append(new_name)
-        # JSONを更新（indent=4で綺麗に保存）
-        with open(COMPANY_FILE, 'w', encoding='utf-8') as f:
-            json.dump(companies, f, ensure_ascii=False, indent=4)
-        print(f"🆕 顧問先を追加しました: {new_name}")
-        return jsonify({"message": "Success", "companies": companies}), 200
-    else:
-        return "Already exists", 409
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO companies (name) VALUES (?)", (new_name,))
+            conn.commit()
+        return "Company added", 200
+    except sqlite3.IntegrityError:
+        return "Company already exists", 409
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)    

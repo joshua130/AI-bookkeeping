@@ -10,6 +10,8 @@ List<CameraDescription> cameras = [];
 Future<void> main() async {
   // カメラの初期化
   WidgetsFlutterBinding.ensureInitialized();
+  // WidgetsFlutterBinding.ensureInitialized();は、Flutterのフレームワークが完全に初期化される前に、カメラなどのプラットフォームチャネルを使用するために必要な呼び出しです。これを呼び出すことで、Flutterがネイティブコードと通信できるようになります。
+  // --- 📸 利用可能なカメラを取得してグローバル変数に保存 ---
   cameras = await availableCameras();
   runApp(const MyApp());
 }
@@ -41,8 +43,8 @@ class HomeScreen extends StatefulWidget {
 // --- HomeScreenState の中身 ---
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _ipController = TextEditingController(text: '192.168.1.xxx:5000');
-  List<String> _companies = []; // 動的に取得するリスト
-  String? _selectedCompany;
+  List<dynamic> _companies = []; // 動的に取得するリスト
+  String? _selectedCode;
   bool _isLoading = false;
 
   // PCからリストを取得する関数
@@ -58,8 +60,8 @@ class _HomeScreenState extends State<HomeScreen> {
         // JSONをパースしてリストに入れる
         List<dynamic> data = json.decode(response.body);
         setState(() {
-          _companies = data.cast<String>();
-          _selectedCompany = _companies.isNotEmpty ? _companies[0] : null;
+          _companies = data;
+          _selectedCode = _companies.isNotEmpty ? _companies[0]['code'] : null;
           _isLoading = false;
         });
       }
@@ -70,7 +72,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // 会社追加用の関数
-Future<void> _addCompany(String name) async {
+Future<void> _addCompany(String code, String name) async {
   if (name.isEmpty) return;
 
   try {
@@ -80,43 +82,37 @@ Future<void> _addCompany(String name) async {
         'x-api-key': 'YOUR_SECRET_API_KEY',
         'Content-Type': 'application/json', // JSONを送ることを明示
       },
-      body: json.encode({'name': name}),
+      body: json.encode({'code': code, 'name': name}),
     );
-
-    if (response.statusCode == 200) {
-      // 追加成功したらリストを再取得して更新
-      _fetchCompanies();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("「$name」を追加しました")),
-      );
-    } else if (response.statusCode == 409) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("その名前は既に登録されています")),
-      );
-    }
+    if(response.statusCode == 200) {
+        _fetchCompanies(); // 追加成功したらリストを再取得して更新
   } catch (e) {
     print("Add error: $e");
   }
 }
-
+  
 // 追加用ダイアログを表示する関数
 void _showAddDialog() {
+  final TextEditingController _codeController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
   showDialog(
     context: context,
-    builder: (context) => AlertDialog(
+    builder: (dialogcontext) => AlertDialog(
       title: const Text("新しい顧問先を追加"),
-      content: TextField(
-        controller: _nameController,
-        decoration: const InputDecoration(hintText: "会社名を入力"),
-        autofocus: true,
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+            TextField(controller: codeController, decoration: const InputDecoration(hintText: "コード (例: 101)"), keyboardType: TextInputType.number),
+            TextField(controller: nameController, decoration: const InputDecoration(hintText: "会社名")),
+        ],
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text("キャンセル")),
+        TextButton(onPressed: () => Navigator.pop(dialogcontext), child: const Text("キャンセル")),
         ElevatedButton(
-          onPressed: () {
-            _addCompany(_nameController.text);
-            Navigator.pop(context);
+          onPressed: () async{
+            await _addCompany(_codeController.text, _nameController.text);
+            if (!mounted) return; // 念のため、ウィジェットがまだ存在するか確認
+            Navigator.pop(dialogcontext);
           },
           child: const Text("追加"),
         ),
@@ -125,40 +121,42 @@ void _showAddDialog() {
   );
 }
 
-  @override
+@override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("顧問先選択")),
+      appBar: AppBar(title: const Text("顧問先管理")),
       body: Padding(
         padding: const EdgeInsets.all(20.0),
         child: Column(
           children: [
-            TextField(controller: _ipController, decoration: const InputDecoration(labelText: 'PCのIP')),
-            const SizedBox(height: 10),
-            ElevatedButton(onPressed: _fetchCompanies, child: const Text("リストを更新")),
+            TextField(controller: _ipController, decoration: const InputDecoration(labelText: "PCのIP")),
+            ElevatedButton(onPressed: _fetchCompanies, child: const Text("リスト更新")),
             const Divider(height: 40),
             if (_isLoading) const CircularProgressIndicator(),
             if (!_isLoading && _companies.isNotEmpty)
               DropdownButton<String>(
-                value: _selectedCompany,
+                value: _selectedCode,
                 isExpanded: true,
-                items: _companies.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
-                onChanged: (v) => setState(() => _selectedCompany = v),
+                items: _companies.map((c) {
+                  return DropdownMenuItem<String>(
+                    value: c['code'],
+                    child: Text("[${c['code']}] ${c['name']}"), // 👈 [101] 株式会社A と表示
+                  );
+                }).toList(),
+                onChanged: (v) => setState(() => _selectedCode = v),
               ),
-              // DropdownButtonのすぐ下あたりに配置
-              ElevatedButton.icon(
-                onPressed: _showAddDialog,
-                icon: const Icon(Icons.add),
-                label: const Text("新しい会社を登録"),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800]),
-              ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 10),
+            ElevatedButton.icon(onPressed: _showAddDialog, icon: const Icon(Icons.add), label: const Text("会社を追加")),
+            const Spacer(),
             ElevatedButton(
-              onPressed: _selectedCompany == null ? null : () {
+              onPressed: _selectedCode == null ? null : () {
+                // 選択されたコードに紐づく会社名を探して渡す
+                final company = _companies.firstWhere((c) => c['code'] == _selectedCode);
                 Navigator.push(context, MaterialPageRoute(builder: (context) => CameraPage(
                   serverUrl: 'http://${_ipController.text}/upload',
-                  apiKey: 'YOUR_SECRET_API_KEY',
-                  companyName: _selectedCompany!,
+                  apiKey: _apiKey,
+                  companyName: company['name'],
+                  companyCode: company['code'], // 👈 コードも渡すように追加
                 )));
               },
               child: const Text("撮影開始"),
@@ -175,6 +173,7 @@ class CameraPage extends StatefulWidget {
   final String serverUrl;
   final String apiKey;
   final String companyName;
+  final String companyCode; 
   const CameraPage({super.key, required this.serverUrl, required this.apiKey, required this.companyName});
 
   @override
@@ -224,6 +223,7 @@ class _CameraPageState extends State<CameraPage> {
       request.headers['x-api-key'] = widget.apiKey;
 
       request.fields['company'] = widget.companyName; // 会社名も送る
+      request.fields['code'] = widget.companyCode; // 会社コードも送る
 
       // 画像ファイルを追加
       final file = await http.MultipartFile.fromPath(
