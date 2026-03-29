@@ -27,7 +27,19 @@ function select_company() {
     fetchCompanies();
   }, []);
 
-  return ();
+  return (
+    <div className="select-company">
+      <label htmlFor="company-select">Select a company:</label>
+      <select id="company-select" value={selectedCompany} onChange={(e) => setSelectedCompany(e.target.value)}>
+        <option value="">--Please choose an option--</option>
+        {companies.map((company) => (
+          <option key={company.id} value={company.id}>
+            {company.name}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
 }
 
 function App() {
