@@ -20,9 +20,16 @@ function CompanySetup() {
             <main>
                 <div className="companySetup-main">
                     <h3>3桁の会社コードを入力してください</h3>
-                    <input type="text" placeholder="会社コード" className="companyCodeInput" />
+                    <input type="text" placeholder="会社コード" className="companyCodeInput" name="code"/>
                     <h3>会社名を入力してください</h3>
-                    <input type="text" placeholder="会社名" className="companyNameInput" />
+                    <input type="text" placeholder="会社名" className="companyNameInput" name="name"/>
+                </div>
+                <div>
+                    /*以下は仮*/
+                    <form action="http://localhost:5000/setUp/postAccountItem" method="post" encType="multipart/form-data">
+                        <input type="file" name="file" />
+                        <button type="submit">アップロード</button>
+                    </form>
                 </div>
             </main>
         </div>
