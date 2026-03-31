@@ -1,16 +1,12 @@
 import sqlite3
-from flask import Flask ,jsonify, request , Blueprint
+from flask import Flask ,jsonify, request
 from flask_cors import CORS
-
+from logics.setUpProcessor import setUpProcessor_bp
 
 app = Flask(__name__)
 CORS(app)
+app.register_blueprint(setUpProcessor_bp)
 
-# データベース接続の関数
-def get_db_connection():
-    conn = sqlite3.connect('C:\\Users\\genjo\\MyProjects\\gemini\\servise\\backend\\main.db')
-    conn.row_factory = sqlite3.Row
-    return conn
 
 # 会社情報を取得するエンドポイント
 # 基本的にはコードと会社名を返すためにつかう
