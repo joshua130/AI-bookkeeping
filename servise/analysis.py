@@ -11,8 +11,8 @@ class receiptData(BaseModel):
     date: str = Field(description="日付はYYYY/MM/DDの形式で入力してください。")
     prise: int = Field(description="金額は数値で入力してください。")
     store_name: str
-    eligible_invoice_number: str = Field(description="Tから始まる13ケタの数列です。")
-    consamption_tax: int
+    invoice_number: str = Field(description="Tから始まる13ケタの数列です。")
+    consamption_tax: int = Field(description="消費税率を10%か8%で表現してください。")
     summary: str
 
 
@@ -33,7 +33,6 @@ response = client.models.generate_content(
     config={
         "response_mime_type": "application/json",
         "response_schema":receiptData,
-
     },
 
 )

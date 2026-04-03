@@ -6,19 +6,53 @@ setUpProcessor_bp = Blueprint('setUpProcessor', __name__)
 
 # データベース接続の関数
 def get_db_connection():
-    conn = sqlite3.connect('C:\\Users\\genjo\\MyProjects\\gemini\\servise\\backend\\main.db')
+    conn = sqlite3.connect(r'servise\backend\main.db')
     conn.row_factory = sqlite3.Row
     return conn
 
 
+
 @setUpProcessor_bp.route('/setUp/postAccountItem', methods=['POST'])
+
+def postIdAndName():
+    conn = get_db_connection()
+
+    code = request.form.get('code').strip()
+    name = request.form.get('name').strip()
+
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM companies WHERE id = ?", (code,))
+    existing_id = cursor.fetchone()
+
+    if existing_id:
+        conn.close()
+        return f'会社コード「{code}」は既に登録されています。', 400
+
+    cursor.execute("INSERT INTO companies (id, name) VALUES (?, ?)", (code, name))
+    conn.commit()
+    conn.close()
+    return '会社情報が正常に登録されました', 200
+
+
+
+
+
 def postAccountItem():
     conn = get_db_connection()
 
-    code = request.form.get('code')
+    code = request.form.get('code').strip()
+    print("Received Code:", code)
     file = request.files.get('file')
 
-    db_columns = ["accountItemName","accountItemCode","manageByAccount","manageByPartner"]
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM accounts WHERE id = ?", (code,))
+    existing_id = cursor.fetchone()
+
+    if existing_id:
+        conn.close()
+        return f'会社コード「{code}」は既に登録されています。', 400
+
+    file.seek(0)
 
     if not is_valid_file(file, accountItem_columns):
         conn.close()
@@ -26,12 +60,16 @@ def postAccountItem():
     
     file.seek(0)  # ファイルポインタを先頭に戻す
     
-    df = pd.read_csv(file,  names=db_columns)
+    df = pd.read_csv(file,  names=accountItem_columns, skiprows=1)
+    df = df.drop(columns=['フリガナ','資金'])
+    df = df.rename(columns = {'勘定科目コード': 'accountItemCode', '勘定科目名': 'accountItemName', '口座別管理': 'manageByAccount', '取引先別管理': 'manageByPartner'})
     df.insert(0, 'id', code)
 
-    df.to_sql('account_items', conn, if_exists='append', index=False)
-    #　なんかここが間違っているのでデータベースにずれて値が入る。
+    print(df.head())  # デバッグ用にデータフレームの内容を表示
 
+    df.to_sql('accounts', conn, if_exists='append', index=False)
+
+    conn.commit()
     conn.close()
     return '勘定科目が正常に登録されました', 200
     
